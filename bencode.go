@@ -6,56 +6,42 @@ import (
 	"reflect"
 )
 
-func Marshal(d interface{}) (content []byte, err error) {
-	t := reflect.TypeOf(d)
-	v := reflect.ValueOf(d)
-	var buf bytes.Buffer
-	buf.Write([]byte("d"))
-	for i := 0; i < v.NumField(); i++ {
-		t_t := t.Field(i)
-		t_v := v.Field(i)
-
-		switch t_v.Kind() {
-		case reflect.Invalid:
-			fmt.Printf("invalid\n")
-
-		case reflect.Int64:
-			// 数字
-			tag := t_t.Tag.Get("bcode")
-			if tag != "" {
-				buf.Write([]byte(fmt.Sprintf("%d:%s", len(tag), tag)))
-				buf.Write([]byte(fmt.Sprintf("i%de", t_v.Int())))
-			}
-		case reflect.String:
-			// 字符串
-			tag := t_t.Tag.Get("bcode")
-			if tag != "" {
-				buf.Write([]byte(fmt.Sprintf("%d:%s", len(tag), tag)))
-				buf.Write([]byte(fmt.Sprintf("%d:%s", t_v.Len(), t_v)))
-			}
-		case reflect.Slice:
-			// 列表
-			tag := t_t.Tag.Get("bcode")
-			if tag != "" {
-				buf.Write([]byte("l"))
-				for i := 0; i < t_v.Len(); i++ {
-					b, e := Marshal(v)
-					if e != nil {
-						return nil, nil
-					}
-					buf.Write(b)
-				}
-				buf.Write([]byte("e"))
-			}
-		case reflect.Struct:
-			// 结构
-			tag := t_t.Tag.Get("bcode")
-			if tag != "" {
-				fmt.Println(t_t.Tag)
+func encode(buf *bytes.Buffer, v reflect.Value) error {
+	switch v.Kind() {
+	case reflect.String:
+		s := v.String()
+		fmt.Fprintf(buf, "%d:%s", len(s), s)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		fmt.Fprintf(buf, "i%de", v.Int())
+	case reflect.Slice:
+		buf.WriteByte('l')
+		for i := 0; i < v.Len(); i++ {
+			if err := encode(buf, v.Index(i)); err != nil {
+				return err
 			}
 		}
+		buf.WriteByte('e')
+	case reflect.Struct:
+		buf.WriteByte('d')
+		for i := 0; i < v.NumField(); i++ {
+			tag := v.Type().Field(i).Tag.Get("bcode")
+			if tag != "" {
+				fmt.Fprintf(buf, "%d:%s", len(tag), tag)
+				if err := encode(buf, v.Field(i)); err != nil {
+					return err
+				}
+			}
+		}
+		buf.WriteByte('e')
 	}
-	buf.Write([]byte("e"))
+	return nil
+}
+
+func Marshal(d interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := encode(&buf, reflect.ValueOf(d)); err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
 }
 

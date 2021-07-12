@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-type Req struct {
+type T4 struct {
 	TransactionID string     `bcode:"t"`
 	Type          string     `bcode:"y"`
 	FuncName      string     `bcode:"q"`
@@ -35,8 +35,9 @@ func Helper(v interface{}, target string) bool {
 	if err != nil {
 		return false
 	}
-	fmt.Println(string(content))
-	fmt.Println(target)
+	if string(content) != target {
+		fmt.Printf("content: %s\ntarget : %s\n", string(content), target)
+	}
 	return string(content) == target
 }
 
@@ -69,7 +70,7 @@ func TestMarshual(t *testing.T) {
 		return
 	}
 
-	/*req := Req{
+	t4 := T4{
 		TransactionID: "aa",
 		Type:          "r",
 		FuncName:      "get_peers",
@@ -77,20 +78,13 @@ func TestMarshual(t *testing.T) {
 			"sss", "bbb", "ccc",
 		},
 		Args: []Argument{
-			{ID: "abcdefg", InfoHash: "aaaaaaaaaaaaaaaaaa"},
-			{ID: "bbbbb", InfoHash: "bbbbbbbbbbbbbbbbbb"},
+			{ID: "bbbbb", InfoHash: "bbbbbbbbbbbbbbbbbb"}, {ID: "abcdefg", InfoHash: "aaaaaaaaaaaaaaaaaa"},
 		},
 	}
-	content, err := Marshal(req)
 
-	if err != nil {
-		t.Errorf("error\n")
+	if !Helper(t4, "d1:t2:aa1:y1:r1:q9:get_peers3:fffl3:sss3:bbb3:ccce1:ald2:id5:bbbbb9:info_hash18:bbbbbbbbbbbbbbbbbbed2:id7:abcdefg9:info_hash18:aaaaaaaaaaaaaaaaaaeee") {
+		t.Errorf("error data\n")
+		return
 	}
-
-	if string(content) != "d1t:ad2:id20:abcdefghij01234567899:info_hash20:mnopqrstuvwxyz123456e1:q9:get_peers1:t2:aa1:y1:qe" {
-		fmt.Println(content)
-		fmt.Println(string(content))
-		t.Errorf("error compare: %s\n", string(content))
-	}*/
 
 }
