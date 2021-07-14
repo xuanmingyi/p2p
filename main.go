@@ -6,7 +6,6 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"math/rand"
@@ -14,16 +13,7 @@ import (
 	"time"
 )
 
-type Node struct {
-	Host string
-	Port int
-}
-
-var Nodes []Node = []Node{
-	{Host: "router.bittorrent.com", Port: 6881},
-	{Host: "dht.transmissionbt.com", Port: 6881},
-	//{Host: "router.utorrent.com", Port: 6881}, // link error
-}
+var RE_JOIN_DHT_INTERVAL int = 10
 
 func Entropy(len int) []byte {
 	var buf bytes.Buffer
@@ -33,19 +23,48 @@ func Entropy(len int) []byte {
 	return buf.Bytes()
 }
 
-func RandomID() string {
+func InngerGetNeighbor(target []byte, nid []byte, end int) []byte {
+	return append(target[:end], nid[end:]...)
+}
+
+func GetNeighbor(target []byte, nid []byte) []byte {
+	return InngerGetNeighbor(target, nid, 10)
+}
+
+type Node struct {
+	NID  []byte
+	Host string
+	Port int
+}
+
+var BOOTSTRAP_NODES []Node = []Node{
+	{Host: "router.bittorrent.com", Port: 6881},
+	{Host: "dht.transmissionbt.com", Port: 6881},
+}
+
+func RandomID() []byte {
 	s := sha1.New()
 	s.Write(Entropy(20))
-	return hex.EncodeToString(s.Sum(nil))
+	return s.Sum(nil)
 }
 
-type Server struct {
+type DHTServer struct {
 	IP      net.IP
 	Port    int
+	NID     []byte
 	UDPConn *net.UDPConn
+	Nodes   chan Node
 }
 
-func (s *Server) Serve() {
+func NewDHTServer(ip net.IP, port int) *DHTServer {
+	s := &DHTServer{
+		IP: ip, Port: port, NID: RandomID(),
+	}
+	s.Nodes = make(chan Node)
+	return s
+}
+
+func (s *DHTServer) Serve() {
 	var err error
 	s.UDPConn, err = net.ListenUDP("udp", &net.UDPAddr{
 		IP:   s.IP,
@@ -57,7 +76,7 @@ func (s *Server) Serve() {
 		panic(err)
 	}
 
-	s.ReJoin()
+	s.ReJoinDHT()
 
 	for {
 		var data [1024]byte
@@ -84,58 +103,71 @@ type FindNodeReq struct {
 	Argument      FindNodeReqArgument `bcode:"a"`
 }
 
-func (s *Server) FindNode(node *Node) {
+func (s *DHTServer) SendFindNode(node *Node) {
+	nid := RandomID()
+	tid := Entropy(2)
+
 	req := FindNodeReq{
-		TransactionID: "aa",
+		TransactionID: string(tid),
 		Type:          "q",
 		FuncName:      "find_node",
 		Argument: FindNodeReqArgument{
-			ID:     "sss",
-			Target: "sssss",
+			ID:     string(nid),
+			Target: string(RandomID()),
 		},
 	}
 
-	s.SendKRPC(&Nodes[0], req)
+	fmt.Println(req, node)
+
+	//s.Nodes <- *node
+	s.SendKRPC(node, req)
 }
 
-func (s *Server) SendKRPC(node *Node, v interface{}) {
-	fmt.Println(Marshal(v))
+func (s *DHTServer) SendKRPC(node *Node, v interface{}) {
+	content, _ := Marshal(v)
+	fmt.Printf("send to : %s data: %T\n", node.Host, content)
+
 }
 
-func (s *Server) Join() {
-	for _, node := range Nodes {
-		s.FindNode(&node)
+func (s *DHTServer) JoinDHT() {
+	for index, node := range BOOTSTRAP_NODES {
+		fmt.Printf("join dht ------%d-----------------\n", index)
+		s.SendFindNode(&node)
+		fmt.Printf("join dht ------%d------end--------\n", index)
 	}
 }
 
-func (s *Server) ReJoin() {
+func (s *DHTServer) ReJoinDHT() {
 	// 加入DHT网络
 	for {
-		s.Join()
-		time.Sleep(time.Second * time.Duration(100))
+		if len(s.Nodes) == 0 {
+			s.JoinDHT()
+		}
+		time.Sleep(time.Second * time.Duration(RE_JOIN_DHT_INTERVAL))
 	}
 }
 
-func (s *Server) AutoFindNode() {
+func (s *DHTServer) AutoSendFindNode() {
 	// 自动发现
 
 	for {
-		time.Sleep(time.Second * time.Duration(100))
+		select {
+		case node := <-s.Nodes:
+			fmt.Println("auto send find nodes -----------------")
+			s.SendFindNode(&node)
+			fmt.Println("auto send find nodes ---------end-----")
+		}
+		time.Sleep(time.Second)
 	}
 
 }
 
 func main() {
-	server := Server{
-		IP:   net.IPv4(0, 0, 0, 0),
-		Port: 9090,
-	}
+	server := NewDHTServer(net.IPv4(0, 0, 0, 0), 9090)
 
-	go server.Serve()
+	go server.AutoSendFindNode()
 
-	go server.ReJoin()
-
-	go server.AutoFindNode()
+	go server.ReJoinDHT()
 
 	select {}
 }
