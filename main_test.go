@@ -2,24 +2,14 @@ package main
 
 import (
 	"fmt"
-	"reflect"
+	"net"
 	"testing"
 )
 
-type User struct {
-	Name string `json:"aaa"`
-	Age  int    `json:""age`
-}
-
 func TestRandomID(te *testing.T) {
-	i := User{
-		Name: "xxx", Age: 30,
-	}
+	conn, err := net.Dial("udp", "router.bittorrent.com:6881")
 
-	t := reflect.TypeOf(i)
-	v := reflect.ValueOf(i)
+	conn.Write([]byte("test1111"))
 
-	for n := 0; n < v.NumField(); n++ {
-		fmt.Println(t.Field(n), v.Field(n))
-	}
+	fmt.Println(conn, err)
 }

@@ -6,12 +6,15 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"math/rand"
 	"net"
 	"time"
 )
+
+var MYNID string = "6c66980770a523a111ccb5e713398c492afcfa10"
 
 var RE_JOIN_DHT_INTERVAL int = 10
 
@@ -57,14 +60,16 @@ type DHTServer struct {
 }
 
 func NewDHTServer(ip net.IP, port int) *DHTServer {
+	nid, _ := hex.DecodeString(MYNID)
+
 	s := &DHTServer{
-		IP: ip, Port: port, NID: RandomID(),
+		IP: ip, Port: port, NID: nid,
 	}
 	s.Nodes = make(chan Node)
 	return s
 }
 
-func (s *DHTServer) Serve() {
+func (s *DHTServer) ServeForever() {
 	var err error
 	s.UDPConn, err = net.ListenUDP("udp", &net.UDPAddr{
 		IP:   s.IP,
@@ -76,17 +81,15 @@ func (s *DHTServer) Serve() {
 		panic(err)
 	}
 
-	s.ReJoinDHT()
-
 	for {
-		var data [1024]byte
+		var data [2048]byte
 		n, addr, err := s.UDPConn.ReadFromUDP(data[:])
 
 		if err != nil {
 			log.Fatal(err)
 			break
 		}
-		fmt.Printf("Addr:%s,data:%v count:%d \n", addr, string(data[:n]), n)
+		fmt.Printf("Addr:%s, data:%v count:%d \n", addr, string(data[:n]), n)
 	}
 
 }
@@ -104,7 +107,6 @@ type FindNodeReq struct {
 }
 
 func (s *DHTServer) SendFindNode(node *Node) {
-	nid := RandomID()
 	tid := Entropy(2)
 
 	req := FindNodeReq{
@@ -112,19 +114,20 @@ func (s *DHTServer) SendFindNode(node *Node) {
 		Type:          "q",
 		FuncName:      "find_node",
 		Argument: FindNodeReqArgument{
-			ID:     string(nid),
+			ID:     string(s.NID),
 			Target: string(RandomID()),
 		},
 	}
 
 	fmt.Println(req, node)
 
-	//s.Nodes <- *node
-	s.SendKRPC(node, req)
+	// s.Nodes <- *node
+	// s.SendKRPC(node, req)
 }
 
 func (s *DHTServer) SendKRPC(node *Node, v interface{}) {
 	content, _ := Marshal(v)
+
 	fmt.Printf("send to : %s data: %T\n", node.Host, content)
 
 }
@@ -143,6 +146,7 @@ func (s *DHTServer) ReJoinDHT() {
 		if len(s.Nodes) == 0 {
 			s.JoinDHT()
 		}
+		// 10s
 		time.Sleep(time.Second * time.Duration(RE_JOIN_DHT_INTERVAL))
 	}
 }
@@ -168,6 +172,9 @@ func main() {
 	go server.AutoSendFindNode()
 
 	go server.ReJoinDHT()
+
+	// 监听 0.0.0.0:9090
+	go server.ServeForever()
 
 	select {}
 }
